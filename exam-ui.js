@@ -1,6 +1,6 @@
 'use strict';
 window.createExamUI=function(ctx){
- const {D,getState,save,render,navigate,figure,esc,icon,confirmAction,toast,topicOptions}=ctx,E=window.ExamCore,$=s=>document.querySelector(s);
+ const {D,getState,save,render,navigate,figure,esc,icon,confirmAction,toast,topicOptions,prioritySwitch}=ctx,E=window.ExamCore,$=s=>document.querySelector(s);
  const main=$('#main'),qmap=Object.fromEntries(D.examQuestions.map(q=>[q.id,q])),cmap=Object.fromEntries(D.concepts.map(c=>[c.id,c]));
  let active=null,resultId=null,reviewFilter='pending',reviewTopic='all',resultFilter='review',returnTarget=null;
  const state=()=>getState().assessment;
@@ -12,22 +12,25 @@ window.createExamUI=function(ctx){
  function openDraft(d){if(!d){toast('오늘 복습할 오답이 없어요.');return;}active=d.id;resultId=null;save();render();main.focus();}
  function findDraft(){return [...Object.values(state().drafts),state().reviewDraft].find(x=>x?.id===active);}
  function examHome(){
-  const x=state(),count=x.attempts.filter(a=>a.kind==='exam').length;
+  const x=state(),count=x.attempts.filter(a=>a.kind==='exam').length,priority=getState().studyPriority;
+  const selected=D.exams.filter(r=>r.priority===priority);
   const roundList=rounds=>`<div class="round-list">${rounds.map(r=>{
    const attempts=x.attempts.filter(a=>a.round===r.id).sort((a,b)=>a.submittedAt-b.submittedAt),draft=x.drafts[r.id];
    const done=draft?draft.ids.filter(id=>E.answered(qmap[id],draft.answers[id])).length:0;
    return `<article class="round-item"><div class="round-name"><h3>${r.title}</h3><span class="muted">${r.ids.length}문항${r.kind==='legacy'?'':` · 5과 ${r.plantCount} / 6과 ${r.animalCount}`}</span></div><div class="round-scores">${attempts.length?`<span>첫 시험 <strong>${score(attempts[0])}점</strong></span><span>최근 <strong>${score(attempts.at(-1))}점</strong></span>`:'<span class="muted">아직 응시하지 않음</span>'}${draft?`<span class="tag">${done}/${r.ids.length} 답안 저장</span>`:''}</div><div class="actions">${r.kind!=='legacy'||draft?`<button data-start-round="${r.id}" class="${draft||!attempts.length?'primary':''}">${icon(draft?'play':'pencil')}${draft?'이어 풀기':attempts.length?'새로 응시':'시험 시작'}</button>`:''}${attempts.length?`<button data-result="${attempts.at(-1).id}">${icon('clipboard-check')}결과</button>`:''}</div></article>`;
   }).join('')}</div>`;
   const legacy=(D.legacyExams||[]).filter(r=>x.drafts[r.id]||x.attempts.some(a=>a.round===r.id));
-  main.innerHTML=heading('회차별 시험','공통 6회 + 6과 추가 2회 · 회당 20문항 · 5지선다 15 + 단답형 5')+
-   `<section class="exam-section" aria-label="공통 시험"><h3>공통 시험 <span class="tag">5과 40% · 6과 60%</span></h3>${roundList(D.exams.filter(r=>r.kind==='common'))}</section>`+
-   `<section class="exam-section" aria-label="6과 추가 시험"><h3>6과 추가 시험 <span class="tag">6과 20문항</span></h3>${roundList(D.exams.filter(r=>r.kind==='extra'))}</section>`+
+  const otherDrafts=D.exams.filter(r=>r.priority!==priority&&x.drafts[r.id]);
+  main.innerHTML=heading('회차별 시험','회당 20문항 · 5지선다 15 + 단답형 5')+prioritySwitch('exams')+
+   `<section class="exam-section" aria-label="${priority==='essential'?'필수':'추가'} 공통 시험"><h3>${priority==='essential'?'필수 1·2회 · 40문항':'추가 3~6회 · 80문항'} <span class="tag">5과 40% · 6과 60%</span></h3>${roundList(selected.filter(r=>r.kind==='common'))}</section>`+
+   (priority==='extra'?`<section class="exam-section" aria-label="6과 보강 시험"><h3>6과 보강 · 40문항 <span class="tag">6과 20문항씩</span></h3>${roundList(selected.filter(r=>r.kind==='extra'))}</section>`:'')+
+   (otherDrafts.length?`<details class="exam-history"><summary>다른 범위의 풀던 시험 · ${otherDrafts.length}회차</summary>${roundList(otherDrafts)}</details>`:'')+
    (legacy.length?`<details class="exam-history"><summary>이전 구성의 시험 기록 · ${legacy.length}회차</summary>${roundList(legacy)}</details>`:'')+
    (count?history('exam'):'')+coverage();
   document.querySelectorAll('[data-start-round]').forEach(b=>b.onclick=()=>openDraft(E.startExam(x,b.dataset.startRound,D)));
   bindResults();
  }
- function coverage(){return `<div class="exam-coverage"><details><summary>원자료 오답 · 시험과 카드 ${D.sourceCoverage.length} / 53</summary><p class="muted">오답 표시 52묶음 + 잘린 문항 보완 1묶음. 모든 묶음이 공통 시험과 암기카드에 연결되어 있습니다.</p><div class="table-wrap"><table><thead><tr><th>원자료</th><th>공통 시험</th><th>추가 시험</th><th>암기카드</th></tr></thead><tbody>${D.sourceCoverage.map(row=>`<tr><td><strong>${row.id}${row.id==='오답13'?' · 보완':''}</strong><br>${esc(row.unit)}<br><span class="muted">${esc(row.source)}</span></td><td>${row.common.map(id=>E.round(D,id).title).join(' · ')}</td><td>${row.extra.map(id=>E.round(D,id).title).join(' · ')||'—'}</td><td>${row.cards.join(' · ')}</td></tr>`).join('')}</tbody></table></div></details></div>`;}
+ function coverage(){const tagged=id=>{const r=E.round(D,id);return `${r.priority==='essential'?'필수':'추가'} ${r.title}`;};return `<div class="exam-coverage"><details><summary>필수+추가 전체 · 원자료 오답 ${D.sourceCoverage.length} / 53</summary><p class="muted">오답 표시 52묶음 + 잘린 문항 보완 1묶음. 필수와 추가를 합친 전체 시험·카드에 모두 포함됩니다.</p><div class="table-wrap"><table><thead><tr><th>원자료</th><th>공통 시험</th><th>6과 보강 시험</th><th>암기카드</th></tr></thead><tbody>${D.sourceCoverage.map(row=>`<tr><td><strong>${row.id}${row.id==='오답13'?' · 보완':''}</strong><br>${esc(row.unit)}<br><span class="muted">${esc(row.source)}</span></td><td>${row.common.map(tagged).join(' · ')}</td><td>${row.extra.map(tagged).join(' · ')||'—'}</td><td>${row.cards.map(id=>`${D.cards.find(c=>c.id===id).priority==='essential'?'필수':'추가'} ${id}`).join(' · ')}</td></tr>`).join('')}</tbody></table></div></details></div>`;}
  function history(kind){const list=state().attempts.filter(a=>a.kind===kind).sort((a,b)=>b.submittedAt-a.submittedAt);return `<details class="exam-history"><summary>${kind==='exam'?'시험':'복습'} 응시 기록 ${list.length}회</summary><div class="table-wrap"><table><thead><tr><th>응시</th><th>제출 시각</th><th>정답</th><th>결과</th></tr></thead><tbody>${list.map(a=>`<tr><td>${a.round?esc(E.round(D,a.round).title):'오답 복습'}</td><td>${atLabel(a.submittedAt)}</td><td>${E.results(a,D).filter(r=>r.correct).length}/${a.ids.length}</td><td><button data-result="${a.id}" class="icon-button" title="결과 보기" aria-label="${atLabel(a.submittedAt)} 결과 보기">${icon('clipboard-list')}</button></td></tr>`).join('')}</tbody></table></div></details>`;}
  function bindResults(){document.querySelectorAll('[data-result]').forEach(b=>b.onclick=()=>openResult(b.dataset.result));}
  function reviewHome(){

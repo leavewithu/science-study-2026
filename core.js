@@ -3,13 +3,14 @@
   const SCHEMA='science-recall-v1', intervals=[1,3,7,14,30];
   const day=(date=new Date())=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const addDays=(value,n)=>{const d=new Date(`${value}T12:00:00`);d.setDate(d.getDate()+n);return day(d);};
-  const empty=()=>({schema:SCHEMA,memory:{},quiz:{},activity:{},session:null,quizSession:null,preferences:{topic:'all',filter:'due',size:20},quizPreferences:{topic:'all',scope:'all',size:10},learning:{current:1,marks:{}},updatedAt:0});
+  const empty=()=>({schema:SCHEMA,studyPriority:'essential',memory:{},quiz:{},activity:{},session:null,quizSession:null,preferences:{topic:'all',filter:'due',size:20},quizPreferences:{topic:'all',scope:'all',size:10},learning:{current:1,marks:{}},updatedAt:0});
   const due=(entry,today=day())=>!entry||!entry.due||entry.due<=today;
   const isWrong=card=>card.refs.some(r=>r.startsWith('오답'));
   const matchesTopic=(item,topic)=>topic==='all'||topic==='animal'&&item.topic!=='plant'||item.topic===topic;
-  function pick(cards,state,{topic='all',filter='due',size=20}={},today=day()){
-    const eligible=cards.filter(c=>matchesTopic(c,topic)).filter(c=>filter==='all'||filter==='wrong'&&isWrong(c)||filter==='hard'&&['hard','again'].includes(state.memory[c.id]?.rating)||filter==='done'&&state.memory[c.id]?.completed===today||filter==='due'&&due(state.memory[c.id],today))
-      .sort((a,b)=>Number(isWrong(b))-Number(isWrong(a))||Number(['hard','again'].includes(state.memory[b.id]?.rating))-Number(['hard','again'].includes(state.memory[a.id]?.rating)));
+  const matchesPriority=(item,priority)=>priority==='all'||item.priority===priority;
+  function pick(cards,state,{topic='all',filter='due',size=20,priority='all'}={},today=day()){
+    const eligible=cards.filter(c=>matchesTopic(c,topic)&&matchesPriority(c,priority)).filter(c=>filter==='all'||filter==='wrong'&&isWrong(c)||filter==='hard'&&['hard','again'].includes(state.memory[c.id]?.rating)||filter==='done'&&state.memory[c.id]?.completed===today||filter==='due'&&due(state.memory[c.id],today))
+      .sort((a,b)=>Number(['hard','again'].includes(state.memory[b.id]?.rating))-Number(['hard','again'].includes(state.memory[a.id]?.rating))||(state.memory[a.id]?.seen||0)-(state.memory[b.id]?.seen||0)||(a.lesson||0)-(b.lesson||0));
     const n=Math.min(size||eligible.length,eligible.length);
     if(topic!=='all')return eligible.slice(0,n).map(c=>c.id);
     const plant=eligible.filter(c=>c.topic==='plant'),animal=eligible.filter(c=>c.topic!=='plant');
@@ -69,6 +70,7 @@
     const ids=(x,set)=>Array.isArray(x)&&x.length<=set.size&&new Set(x).size===x.length&&x.every(v=>typeof v==='string'&&set.has(v));
     if(!obj(raw)||raw.schema!==SCHEMA||!obj(raw.memory)||!obj(raw.quiz)||!obj(raw.activity))bad();
     const out=empty();
+    out.studyPriority=raw.studyPriority==='extra'?'extra':'essential';
     for(const [id,m] of Object.entries(raw.memory)){
       if(!cardIds.has(id)||!obj(m)||!['known','hard','again'].includes(m.rating)||!num(m.level)||m.level>5||!date(m.due)||(m.completed!==null&&!date(m.completed))||!num(m.seen)||!num(m.updatedAt))bad();
       out.memory[id]={rating:m.rating,level:m.level,due:m.due,completed:m.completed,seen:m.seen,updatedAt:m.updatedAt};
@@ -106,6 +108,6 @@
     }
     out.updatedAt=num(raw.updatedAt)?raw.updatedAt:0;return out;
   }
-  root.ScienceCore={SCHEMA,day,addDays,empty,due,isWrong,matchesTopic,pick,start,current,rate,nextRound,undo,quizRate,validate};
+  root.ScienceCore={SCHEMA,day,addDays,empty,due,isWrong,matchesTopic,matchesPriority,pick,start,current,rate,nextRound,undo,quizRate,validate};
   if(typeof module!=='undefined')module.exports=root.ScienceCore;
 })(typeof window==='undefined'?globalThis:window);
