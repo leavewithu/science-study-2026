@@ -7,6 +7,7 @@
  const answered=(q,a)=>q.type==='mc'?Number.isInteger(a?.value):Boolean(a?.value?.trim());
  const correct=(q,a)=>answered(q,a)&&(q.type==='mc'?a.value===q.correct:q.accepted.some(x=>normalize(x)===normalize(a.value)));
  const results=(attempt,D)=>attempt.ids.map(id=>{const q=D.examQuestions.find(q=>q.id===id),a=attempt.answers[id];return {id,conceptId:q.conceptId,correct:correct(q,a),uncertain:!!a?.uncertain,answered:answered(q,a)};});
+ const round=(D,id)=>D.exams.find(r=>r.id===id)||(D.legacyExams||[]).find(r=>r.id===id);
  function migrate(exam,legacyQuiz,D){
   for(const c of D.concepts){const dates=c.refs.filter(ref=>legacyQuiz[ref]?.wrong).map(ref=>legacyQuiz[ref].updatedAt);if(dates.length)exam.legacy[c.id]=Math.max(exam.legacy[c.id]||0,...dates);}
   return exam;
@@ -36,8 +37,9 @@
   return {id:root.crypto?.randomUUID?.()||`${now}-${Math.random().toString(36).slice(2)}`,kind,round,ids:[...ids],answers:{},index:0,startedAt:now,updatedAt:now};
  }
  function startExam(exam,roundId,D,now=Date.now()){
-  const round=D.exams.find(r=>r.id===roundId);if(!round)throw Error('회차를 찾지 못했습니다.');
-  return exam.drafts[roundId]||(exam.drafts[roundId]=create('exam',roundId,round.ids,now));
+  if(exam.drafts[roundId])return exam.drafts[roundId];
+  const r=D.exams.find(r=>r.id===roundId);if(!r)throw Error('회차를 찾지 못했습니다.');
+  return exam.drafts[roundId]=create('exam',roundId,r.ids,now);
  }
  function startReview(exam,D,today=day(),now=Date.now(),allowed=null){
   if(exam.reviewDraft)return exam.reviewDraft;
@@ -56,7 +58,7 @@
   if(exam.attempts.length>=1000)throw Error('저장 가능한 시험 기록 수를 넘었습니다. 기록을 내보내 주세요.');
   const active=draft.kind==='exam'?exam.drafts[draft.round]:exam.reviewDraft;
   if(active?.id!==draft.id)throw Error('진행 중인 시험이 아닙니다.');
-  const a={...JSON.parse(JSON.stringify(draft)),submittedAt:now,date:day(now),bankVersion:D.examVersion};
+  const a={...JSON.parse(JSON.stringify(draft)),submittedAt:now,date:day(now),bankVersion:draft.kind==='exam'?(round(D,draft.round).bankVersion||D.examVersion):D.examVersion};
   // Snapshot eligibility before submission so later reading cannot rewrite past recall.
   if(a.kind==='review'){
    const scheduled=reviews(exam,D,a.date);
@@ -75,7 +77,7 @@
   const qmap=new Map(D.examQuestions.map(q=>[q.id,q])),cids=new Set(D.concepts.map(c=>c.id));
   function record(a,finished){
    if(!obj(a)||typeof a.id!=='string'||!/^[a-zA-Z0-9-]{1,80}$/.test(a.id)||!['exam','review'].includes(a.kind)||!Array.isArray(a.ids)||!a.ids.length||new Set(a.ids).size!==a.ids.length||a.ids.some(id=>!qmap.has(id))||!obj(a.answers)||!num(a.index)||a.index>=a.ids.length||!timestamp(a.startedAt)||!timestamp(a.updatedAt))bad();
-   if(a.kind==='exam'){const r=D.exams.find(r=>r.id===a.round);if(!r||JSON.stringify(a.ids)!==JSON.stringify(r.ids))bad();}
+   if(a.kind==='exam'){const r=round(D,a.round);if(!r||JSON.stringify(a.ids)!==JSON.stringify(r.ids))bad();}
    else if(a.round!==null||a.ids.length>10||new Set(a.ids.map(id=>qmap.get(id).conceptId)).size!==a.ids.length)bad();
    const clean={id:a.id,kind:a.kind,round:a.round,ids:[...a.ids],answers:{},index:a.index,startedAt:a.startedAt,updatedAt:a.updatedAt};
    for(const [id,v]of Object.entries(a.answers)){
@@ -84,7 +86,7 @@
     if(q.type==='mc'?(v.value!==null&&(!Number.isInteger(v.value)||v.value<0||v.value>4)):(typeof v.value!=='string'||v.value.length>200))bad();
     clean.answers[id]={value:v.value,uncertain:v.uncertain};
    }
-   if(finished){if(!timestamp(a.submittedAt)||a.submittedAt<a.startedAt||!/^\d{4}-\d{2}-\d{2}$/.test(a.date)||!Number.isFinite(Date.parse(a.date))||new Date(a.date).toISOString().slice(0,10)!==a.date||a.bankVersion!==D.examVersion)bad();Object.assign(clean,{submittedAt:a.submittedAt,date:a.date,bankVersion:a.bankVersion});
+   if(finished){const versions=a.kind==='exam'?[round(D,a.round).bankVersion||D.examVersion]:[1,D.examVersion];if(!timestamp(a.submittedAt)||a.submittedAt<a.startedAt||!/^\d{4}-\d{2}-\d{2}$/.test(a.date)||!Number.isFinite(Date.parse(a.date))||new Date(a.date).toISOString().slice(0,10)!==a.date||!versions.includes(a.bankVersion))bad();Object.assign(clean,{submittedAt:a.submittedAt,date:a.date,bankVersion:a.bankVersion});
     if(a.kind==='review'){if(!Array.isArray(a.eligible)||new Set(a.eligible).size!==a.eligible.length||a.eligible.some(id=>!a.ids.some(qid=>qmap.get(qid).conceptId===id)))bad();clean.eligible=[...a.eligible];}
    }
    return clean;
@@ -108,6 +110,6 @@
   for(const key of ['reads','legacy'])for(const [id,time]of Object.entries(b[key]))out[key][id]=Math.max(out[key][id]||0,time);
   return validate(out,D);
  }
- root.ExamCore={day,add,empty,normalize,answered,correct,results,migrate,reviews,startExam,startReview,setAnswer,submit,validate,merge};
+ root.ExamCore={day,add,empty,normalize,answered,correct,results,round,migrate,reviews,startExam,startReview,setAnswer,submit,validate,merge};
  if(typeof module!=='undefined')module.exports=root.ExamCore;
 })(typeof window==='undefined'?globalThis:window);

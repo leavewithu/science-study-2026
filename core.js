@@ -6,10 +6,18 @@
   const empty=()=>({schema:SCHEMA,memory:{},quiz:{},activity:{},session:null,quizSession:null,preferences:{topic:'all',filter:'due',size:20},quizPreferences:{topic:'all',scope:'all',size:10},learning:{current:1,marks:{}},updatedAt:0});
   const due=(entry,today=day())=>!entry||!entry.due||entry.due<=today;
   const isWrong=card=>card.refs.some(r=>r.startsWith('오답'));
+  const matchesTopic=(item,topic)=>topic==='all'||topic==='animal'&&item.topic!=='plant'||item.topic===topic;
   function pick(cards,state,{topic='all',filter='due',size=20}={},today=day()){
-    return cards.filter(c=>topic==='all'||c.topic===topic).filter(c=>filter==='all'||filter==='wrong'&&isWrong(c)||filter==='hard'&&['hard','again'].includes(state.memory[c.id]?.rating)||filter==='done'&&state.memory[c.id]?.completed===today||filter==='due'&&due(state.memory[c.id],today))
-      .sort((a,b)=>Number(isWrong(b))-Number(isWrong(a))||Number(['hard','again'].includes(state.memory[b.id]?.rating))-Number(['hard','again'].includes(state.memory[a.id]?.rating)))
-      .slice(0,size===0?cards.length:size).map(c=>c.id);
+    const eligible=cards.filter(c=>matchesTopic(c,topic)).filter(c=>filter==='all'||filter==='wrong'&&isWrong(c)||filter==='hard'&&['hard','again'].includes(state.memory[c.id]?.rating)||filter==='done'&&state.memory[c.id]?.completed===today||filter==='due'&&due(state.memory[c.id],today))
+      .sort((a,b)=>Number(isWrong(b))-Number(isWrong(a))||Number(['hard','again'].includes(state.memory[b.id]?.rating))-Number(['hard','again'].includes(state.memory[a.id]?.rating)));
+    const n=Math.min(size||eligible.length,eligible.length);
+    if(topic!=='all')return eligible.slice(0,n).map(c=>c.id);
+    const plant=eligible.filter(c=>c.topic==='plant'),animal=eligible.filter(c=>c.topic!=='plant');
+    let p=Math.min(Math.round(n*0.4),plant.length),a=Math.min(n-p,animal.length);
+    p=Math.min(n-a,plant.length);
+    const selected=[plant.slice(0,p),animal.slice(0,a)],out=[],pattern=[0,1,1,0,1];
+    while(out.length<n){const group=pattern[out.length%5],queue=selected[group].length?selected[group]:selected[1-group];out.push(queue.shift().id);}
+    return out;
   }
   function start(ids,today=day()){
     return {date:today,ids:[...ids],queue:[...ids],index:0,round:1,streak:{},done:[],reviews:0,undo:null};
@@ -85,7 +93,7 @@
       if(!obj(q)||!ids(q.ids,qIds)||!num(q.index)||q.index>q.ids.length||!Array.isArray(q.results)||q.results.length!==q.index||!q.results.every((r,i)=>obj(r)&&r.id===q.ids[i]&&typeof r.correct==='boolean')||typeof q.draft!=='string'||q.draft.length>2000)bad();
       out.quizSession={ids:[...q.ids],index:q.index,results:q.results.map(r=>({id:r.id,correct:r.correct})),draft:q.draft};
     }
-    if(obj(raw.preferences))out.preferences={topic:cards.some(c=>c.topic===raw.preferences.topic)?raw.preferences.topic:'all',filter:['due','all','wrong','hard','done'].includes(raw.preferences.filter)?raw.preferences.filter:'due',size:[0,10,20,40].includes(raw.preferences.size)?raw.preferences.size:20};
+    if(obj(raw.preferences))out.preferences={topic:raw.preferences.topic==='animal'||cards.some(c=>c.topic===raw.preferences.topic)?raw.preferences.topic:'all',filter:['due','all','wrong','hard','done'].includes(raw.preferences.filter)?raw.preferences.filter:'due',size:[0,10,20,40].includes(raw.preferences.size)?raw.preferences.size:20};
     if(obj(raw.quizPreferences))out.quizPreferences={topic:cards.some(c=>c.topic===raw.quizPreferences.topic)?raw.quizPreferences.topic:'all',scope:['all','basic','wrong','extra','retry'].includes(raw.quizPreferences.scope)?raw.quizPreferences.scope:'all',size:[0,10,20].includes(raw.quizPreferences.size)?raw.quizPreferences.size:10};
     if(raw.learning!==undefined){
       const l=raw.learning;
@@ -98,6 +106,6 @@
     }
     out.updatedAt=num(raw.updatedAt)?raw.updatedAt:0;return out;
   }
-  root.ScienceCore={SCHEMA,day,addDays,empty,due,isWrong,pick,start,current,rate,nextRound,undo,quizRate,validate};
+  root.ScienceCore={SCHEMA,day,addDays,empty,due,isWrong,matchesTopic,pick,start,current,rate,nextRound,undo,quizRate,validate};
   if(typeof module!=='undefined')module.exports=root.ScienceCore;
 })(typeof window==='undefined'?globalThis:window);
