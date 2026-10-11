@@ -18,7 +18,16 @@ window.drawScienceDiagram=function(canvas,type){
     if(two){text('첫째 날',225,390,21);text('둘째 날',535,390,21);c.setLineDash([6,6]);line(380,80,380,355,gray,2);c.setLineDash([]);}
     else{for(const [s,a,b] of [['A',.2,0],['B',.4,-195],['C',.88,40]]){ellipse(x+a*width,y+b,5,5,green);text(s,x+a*width,y+b-17,25);}text('낮',335,390,20);text('밤',610,390,20);}
   }
-  if(type==='factors'){
+  if(type==='photosynthesis'){
+    c.fillStyle='#eef5ec';c.fillRect(233,100,294,235);text('엽록체',380,148,27,green);
+    text('빛에너지',380,40,26,'#956b18');arrow(380,52,380,101,'#b18c37',4);text('엽록소가 흡수',493,86,19,'#956b18');
+    box('물',30,173,133,55,'#e5eff7');box('이산화 탄소',30,255,166,55,'#f5e9e4');
+    arrow(171,200,253,200,blue,4);arrow(203,283,253,283,red,4);
+    text('광합성',380,226,32,green);text('양분 만들기',380,268,23,green);
+    arrow(508,200,589,200,green,4);arrow(508,283,589,283,blue,4);
+    box('포도당',599,173,130,55,'#f9efce');box('산소',599,255,130,55,'#e5eff7');
+    text('재료',112,139,22);text('산물',664,139,22);text('물 + 이산화 탄소 → 포도당 + 산소',380,391,25);
+  }else if(type==='factors'){
     for(const [i,label] of ['빛의 세기','이산화 탄소 농도','온도'].entries()){
       const x=30+i*245,y=305;axes(x,y,204,205,label,'광합성량');c.beginPath();c.moveTo(x+5,y-5);
       if(i<2){c.bezierCurveTo(x+65,y-170,x+75,y-160,x+195,y-160);}else{c.bezierCurveTo(x+85,y-10,x+110,y-240,x+148,y-183);c.bezierCurveTo(x+170,y-150,x+184,y-45,x+195,y-30);}c.strokeStyle=i===2?red:green;c.lineWidth=5;c.stroke();

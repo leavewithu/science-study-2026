@@ -3,7 +3,7 @@
   const SCHEMA='science-recall-v1', intervals=[1,3,7,14,30];
   const day=(date=new Date())=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const addDays=(value,n)=>{const d=new Date(`${value}T12:00:00`);d.setDate(d.getDate()+n);return day(d);};
-  const empty=()=>({schema:SCHEMA,memory:{},quiz:{},activity:{},session:null,quizSession:null,preferences:{topic:'all',filter:'due',size:20},quizPreferences:{topic:'all',scope:'all',size:10},updatedAt:0});
+  const empty=()=>({schema:SCHEMA,memory:{},quiz:{},activity:{},session:null,quizSession:null,preferences:{topic:'all',filter:'due',size:20},quizPreferences:{topic:'all',scope:'all',size:10},learning:{current:1,marks:{}},updatedAt:0});
   const due=(entry,today=day())=>!entry||!entry.due||entry.due<=today;
   const isWrong=card=>card.refs.some(r=>r.startsWith('오답'));
   function pick(cards,state,{topic='all',filter='due',size=20}={},today=day()){
@@ -87,6 +87,15 @@
     }
     if(obj(raw.preferences))out.preferences={topic:cards.some(c=>c.topic===raw.preferences.topic)?raw.preferences.topic:'all',filter:['due','all','wrong','hard','done'].includes(raw.preferences.filter)?raw.preferences.filter:'due',size:[0,10,20,40].includes(raw.preferences.size)?raw.preferences.size:20};
     if(obj(raw.quizPreferences))out.quizPreferences={topic:cards.some(c=>c.topic===raw.quizPreferences.topic)?raw.quizPreferences.topic:'all',scope:['all','basic','wrong','extra','retry'].includes(raw.quizPreferences.scope)?raw.quizPreferences.scope:'all',size:[0,10,20].includes(raw.quizPreferences.size)?raw.quizPreferences.size:10};
+    if(raw.learning!==undefined){
+      const l=raw.learning;
+      if(!obj(l)||!num(l.current)||l.current<1||l.current>12||!obj(l.marks))bad();
+      out.learning.current=l.current;
+      for(const [id,m] of Object.entries(l.marks)){
+        if(!/^(?:[1-9]|1[0-2])$/.test(id)||!obj(m)||!['known','again'].includes(m.status)||!num(m.updatedAt))bad();
+        out.learning.marks[id]={status:m.status,updatedAt:m.updatedAt};
+      }
+    }
     out.updatedAt=num(raw.updatedAt)?raw.updatedAt:0;return out;
   }
   root.ScienceCore={SCHEMA,day,addDays,empty,due,isWrong,pick,start,current,rate,nextRound,undo,quizRate,validate};
